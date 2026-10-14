@@ -296,6 +296,8 @@ textarea { resize: vertical; min-height: 132px; line-height: 1.6; }
   function persist() { try { localStorage.setItem(KEY, JSON.stringify({ buyer: S.buyer, groups: S.groups })); } catch (e) {} }
   function total() { return S.groups.reduce(function (a, g) { return a + g.names.length; }, 0); }
   function products() { var o = []; S.groups.forEach(function (g) { if (o.indexOf(g.product) < 0) o.push(g.product); }); return o; }
+  // 2026-10-14 상품별 개수(스토어 상품명 기준) — 완료 화면에서 상품마다 주문 수량을 따로 안내
+  function perProduct() { return products().map(function (p) { return { label: plabel(p), n: S.groups.reduce(function (a, g) { return a + (g.product === p ? g.names.length : 0); }, 0) }; }); }
   function plabel(name) { var p = prod(name); return p ? (p.label || p.name) : name; }
 
   function groupLabel(g) {
@@ -485,14 +487,23 @@ textarea { resize: vertical; min-height: 132px; line-height: 1.6; }
       '</div></section>';
   }
 
+  // 2026-10-14 아론 요청: 상품이 여러 종류면 상품마다 수량 안내, 이름칸은 '톡톡주문', 결제 후 톡톡으로 알리기(주문번호 불필요)
+  function payStep(s) {
+    var per = s.per && s.per.length ? s.per : [{ label: s.product, n: s.count }];
+    var note = '<br><span style="font-size:13px;color:#8a7f79">이름 입력칸에는 <b>톡톡주문</b>이라고 적어 주세요</span>';
+    if (per.length === 1) return '<li>스마트스토어에서 <b>' + esc(per[0].label) + '</b> 수량 <b>' + per[0].n + '개</b>로 주문·결제해 주세요' + note + '</li>';
+    return '<li>스마트스토어에서 상품마다 수량을 맞춰 주문·결제해 주세요<ul style="margin:6px 0 2px;padding-left:18px">' +
+      per.map(function (x) { return '<li><b>' + esc(x.label) + '</b> ' + x.n + '개</li>'; }).join('') + '</ul>' + note + '</li>';
+  }
+
   function doneHtml() {
     var s = S.saved, h = '<section class="done"><div class="card">';
     if (s.sent) {
       h += '<div class="note ok">주문서가 접수됐어요</div><h2>주문번호 ' + esc(s.orderNo) + '</h2><p class="hint">' + esc(s.product) + ' · ' + s.count + '개</p>' +
-        '<span class="lbl">다음 순서</span><ol><li>스마트스토어에서 수량 ' + s.count + '개로 주문·결제해 주세요<br><span style="font-size:13px;color:#8a7f79">이름 입력칸에는 <b>톡톡주문</b>이라고 적어 주세요</span></li><li>결제 후 <b>톡톡으로 알려 주세요</b> (주문번호 함께)</li></ol>';
+        '<span class="lbl">다음 순서</span><ol>' + payStep(s) + '<li>결제 후 <b>톡톡으로 알려 주세요</b></li></ol>';
     } else {
       h += '<div class="note ok">주문서 파일을 만들었어요</div><h2>' + esc(s.filename) + '</h2><p class="hint">' + esc(s.product) + ' · ' + s.count + '개</p>' +
-        '<span class="lbl">다음 순서</span><ol><li>받은 파일을 톡톡 채팅방에 보내주세요</li><li>스마트스토어에서 수량 ' + s.count + '개로 주문·결제해 주세요<br><span style="font-size:13px;color:#8a7f79">이름 입력칸에는 <b>톡톡주문</b>이라고 적어 주세요</span></li><li>결제 후 <b>톡톡으로 알려 주세요</b></li></ol>' +
+        '<span class="lbl">다음 순서</span><ol><li>받은 파일을 톡톡 채팅방에 보내주세요</li>' + payStep(s) + '<li>결제 후 <b>톡톡으로 알려 주세요</b></li></ol>' +
         '<div class="row"><button class="btn" type="button" data-act="download">파일 다시 받기</button></div>';
     }
     return h + '<div class="row"><button class="btn" type="button" data-act="back">주문서로 돌아가기</button></div>' +
@@ -509,7 +520,7 @@ textarea { resize: vertical; min-height: 132px; line-height: 1.6; }
       .then(function (j) {
         S.sending = false;
         if (!j || !j.ok) throw new Error((j && j.error) || '');
-        S.saved = { sent: true, orderNo: j.orderNo, count: count, product: prods }; S.finishing = false; S.confirm = '';
+        S.saved = { sent: true, orderNo: j.orderNo, count: count, product: prods, per: perProduct() }; S.finishing = false; S.confirm = '';
         render(); window.scrollTo(0, 0);
       })
       .catch(function () {
@@ -556,7 +567,7 @@ textarea { resize: vertical; min-height: 132px; line-height: 1.6; }
     var buyer = S.buyer.trim().replace(/[\\/:*?"<>|]/g, '') || '주문';
     var filename = S.saved && S.saved.filename || ('리틀프린트_단체주문_' + buyer + '_' + stamp() + '.xlsx');
     var data = buildXlsx(), count = total();
-    function done() { S.saved = { filename: filename, count: count, product: products().map(plabel).join(', ') }; S.finishing = false; S.confirm = ''; render(); window.scrollTo(0, 0); }
+    function done() { S.saved = { filename: filename, count: count, product: products().map(plabel).join(', '), per: perProduct() }; S.finishing = false; S.confirm = ''; render(); window.scrollTo(0, 0); }
     function fail(m) { S.error = m; render(); }
     var cl = window.claude;
     if (cl && typeof cl.use === 'function') {

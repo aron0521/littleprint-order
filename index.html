@@ -489,10 +489,10 @@ textarea { resize: vertical; min-height: 132px; line-height: 1.6; }
     var s = S.saved, h = '<section class="done"><div class="card">';
     if (s.sent) {
       h += '<div class="note ok">주문서가 접수됐어요</div><h2>주문번호 ' + esc(s.orderNo) + '</h2><p class="hint">' + esc(s.product) + ' · ' + s.count + '개</p>' +
-        '<span class="lbl">다음 순서</span><ol><li>스마트스토어에서 수량 ' + s.count + '개로 결제해 주세요</li><li>확인 후 톡톡으로 안내드릴게요</li></ol>';
+        '<span class="lbl">다음 순서</span><ol><li>스마트스토어에서 수량 ' + s.count + '개로 주문·결제해 주세요<br><span style="font-size:13px;color:#8a7f79">이름 입력칸에는 <b>톡톡주문</b>이라고 적어 주세요</span></li><li>결제 후 <b>톡톡으로 알려 주세요</b> (주문번호 함께)</li></ol>';
     } else {
       h += '<div class="note ok">주문서 파일을 만들었어요</div><h2>' + esc(s.filename) + '</h2><p class="hint">' + esc(s.product) + ' · ' + s.count + '개</p>' +
-        '<span class="lbl">다음 순서</span><ol><li>받은 파일을 톡톡 채팅방에 보내주세요</li><li>스마트스토어에서 수량 ' + s.count + '개로 결제해 주세요</li></ol>' +
+        '<span class="lbl">다음 순서</span><ol><li>받은 파일을 톡톡 채팅방에 보내주세요</li><li>스마트스토어에서 수량 ' + s.count + '개로 주문·결제해 주세요<br><span style="font-size:13px;color:#8a7f79">이름 입력칸에는 <b>톡톡주문</b>이라고 적어 주세요</span></li><li>결제 후 <b>톡톡으로 알려 주세요</b></li></ol>' +
         '<div class="row"><button class="btn" type="button" data-act="download">파일 다시 받기</button></div>';
     }
     return h + '<div class="row"><button class="btn" type="button" data-act="back">주문서로 돌아가기</button></div>' +

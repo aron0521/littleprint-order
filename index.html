@@ -154,19 +154,21 @@ textarea { resize: vertical; min-height: 132px; line-height: 1.6; }
   var CNC = ['별','하트','구름','얼굴별','얼굴하트','얼굴조약돌','(없음)'];
   var JIB = ['미니','미니(성인용)','빅사이즈','빅사이즈(성인용)'];
   var SHOE = ['미니','빅사이즈'];
+  // 2026-10-15 고리 옵션(아론): 마카롱·모노톤·미니 캡슐·미니 사각만. 처음 선택값 = 유색 D링(주문 기록상 가장 많음)
+  var RINGS = ['유색 D링', '8자 고무줄', '유색 군번줄'];
 
   // name = 주문서(엑셀) 상품명 · label = 화면에 보이는 상품명 · img = 상품 이미지 경로 (비어 있으면 미리보기 태그로 대신 표시)
   var PRODUCTS = [
-    { name: '마카롱', colors: MAC, emojis: EMO },
+    { name: '마카롱', colors: MAC, emojis: EMO, rings: RINGS },
     { name: '리틀마카롱', colors: MAC, emojis: EMO },
-    { name: '모노톤', colors: ['화이트','블랙'], emojis: EMO },
+    { name: '모노톤', colors: ['화이트','블랙'], emojis: EMO, rings: RINGS },
     { name: '빅마카롱', colors: BASIC, emojis: EMO, sizes: ['빅마카롱','더빅마카롱'] },
     { name: '마카롱 지비츠', colors: BASIC, emojis: EMO, sizes: JIB },
     { name: '마카롱 운동화', colors: BASIC, emojis: EMO, sizes: SHOE },
     { name: '비비드 지비츠', colors: VIV, emojis: VEMO, sizes: JIB },
     { name: '비비드 운동화', colors: VIV, emojis: VEMO, sizes: SHOE },
-    { name: '미니 캡슐', colors: MINI, dirs: ['가로형','세로형'] },
-    { name: '미니 사각', colors: MINI, dirs: ['가로형','세로형'] },
+    { name: '미니 캡슐', colors: MINI, dirs: ['가로형','세로형'], rings: RINGS },
+    { name: '미니 사각', colors: MINI, dirs: ['가로형','세로형'], rings: RINGS },
     { name: '마그넷', colors: BASIC.concat(VIV), emojis: EMO, vividEmojis: VEMO, sizes: SHOE },
     { name: '동호회 네임택', colors: BASIC, emojis: CLUB },
     { name: '쿠앤크 마블', colors: ['쿠앤크','오레오'], emojis: CNC, emojiTitle: '이모티콘 참', emojiRows: [3, 4], sizes: ['스몰','빅'] }
@@ -264,12 +266,13 @@ textarea { resize: vertical; min-height: 132px; line-height: 1.6; }
   // ---------- 옵션정보 문자열 (양식 I열 수식과 동일) ----------
   var SIZE_DEFAULT = { '마카롱 지비츠':'미니','비비드 지비츠':'미니','마카롱 운동화':'미니','비비드 운동화':'미니','마그넷':'미니','빅마카롱':'빅마카롱','쿠앤크 마블':'스몰' };
   function isMini(p) { return p === '미니 캡슐' || p === '미니 사각'; }
-  function optionInfo(product, name, color, emoji, size, dir) {
+  function optionInfo(product, name, color, emoji, size, dir, ring) {
     var s = '들어갈 이름: ' + name;
     if (color) s += ' / 컬러: ' + color;
     if (emoji && !isMini(product)) s += ' / 이모티콘: ' + emoji;
     if (SIZE_DEFAULT[product]) s += ' / 사이즈: ' + (size || SIZE_DEFAULT[product]);
     if (isMini(product)) s += ' / 방향: ' + (dir || '가로형');
+    if (ring) s += ' / 고리: ' + ring;
     return s.replace(/\s+/g, ' ').trim(); // 엑셀 TRIM과 동일하게 연속 공백 정리
   }
 
@@ -289,7 +292,7 @@ textarea { resize: vertical; min-height: 132px; line-height: 1.6; }
   var S = { buyer: '', groups: [], editing: null, confirm: '', saved: null, error: '', expanded: {} };
   function blankDraft() {
     var last = S.groups.length ? S.groups[S.groups.length - 1].product : '';
-    return { id: null, product: last, pickOpen: !last, color: '', emoji: '', size: '', dir: '', text: '' };
+    return { id: null, product: last, pickOpen: !last, color: '', emoji: '', size: '', dir: '', ring: '', text: '' };
   }
   try { var raw = localStorage.getItem(KEY); if (raw) { var d0 = JSON.parse(raw); S.buyer = d0.buyer || ''; S.groups = (d0.groups || []).filter(function (g) { return prod(g.product); }); } } catch (e) {}
   if (!S.groups.length) S.editing = blankDraft();
@@ -297,7 +300,17 @@ textarea { resize: vertical; min-height: 132px; line-height: 1.6; }
   function total() { return S.groups.reduce(function (a, g) { return a + g.names.length; }, 0); }
   function products() { var o = []; S.groups.forEach(function (g) { if (o.indexOf(g.product) < 0) o.push(g.product); }); return o; }
   // 2026-10-14 상품별 개수(스토어 상품명 기준) — 완료 화면에서 상품마다 주문 수량을 따로 안내
-  function perProduct() { return products().map(function (p) { return { label: plabel(p), n: S.groups.reduce(function (a, g) { return a + (g.product === p ? g.names.length : 0); }, 0) }; }); }
+  // 2026-10-15 상품 + 고리 조합별 개수 — 스마트스토어에서 고리 옵션마다 수량을 나눠 담아야 해서
+  function ringOf(g) { var p = prod(g.product); return p && p.rings ? (g.ring || RINGS[0]) : ''; }
+  function perProduct() {
+    var o = [], m = {};
+    S.groups.forEach(function (g) {
+      var k = g.product + '|' + ringOf(g);
+      if (!(k in m)) { m[k] = o.length; o.push({ label: plabel(g.product) + (ringOf(g) ? ' · ' + ringOf(g) : ''), n: 0 }); }
+      o[m[k]].n += g.names.length;
+    });
+    return o;
+  }
   function plabel(name) { var p = prod(name); return p ? (p.label || p.name) : name; }
 
   function groupLabel(g) {
@@ -305,6 +318,7 @@ textarea { resize: vertical; min-height: 132px; line-height: 1.6; }
     if (p && p.emojis && g.emoji) parts.push(g.emoji.replace('(없음)', (p.emojiTitle || '이모티콘') + ' 없음'));
     if (p && p.sizes && g.size) parts.push(g.size);
     if (p && p.dirs && g.dir) parts.push(g.dir);
+    if (p && p.rings) parts.push(ringOf(g));
     return parts.join(' · ');
   }
   function draftReady(d) {
@@ -443,6 +457,7 @@ textarea { resize: vertical; min-height: 132px; line-height: 1.6; }
       if (el) h.push(step('emoji', p.emojiTitle || '이모티콘', d.emoji ? d.emoji.replace('(없음)', '없음') : '', emojiPicker(el, d.emoji, d.color, p.emojiRows, d.product)));
       if (p.sizes) h.push(step('size', '사이즈', d.size, optChips('사이즈', p.sizes, d.size, 'size')));
       if (p.dirs) h.push(step('dir', '방향', d.dir || '가로형', optChips('방향', p.dirs, d.dir || '가로형', 'dir')));
+      if (p.rings) h.push(step('ring', '고리', d.ring || RINGS[0], optChips('고리', p.rings, d.ring || RINGS[0], 'ring')));
       var cnt = parseNames(d.text).length;
       h.push(step('names', '이름', cnt ? cnt + '명' : '', '<div class="field"><textarea id="names" placeholder="김서아&#10;이하윤&#10;박지안">' + esc(d.text) + '</textarea><span class="hint">한 줄에 한 명, 또는 쉼표로 구분해요. 앞 번호(1. 2.)는 자동으로 빠져요</span></div><div id="pv"></div>', true));
     }
@@ -539,7 +554,8 @@ textarea { resize: vertical; min-height: 132px; line-height: 1.6; }
         var emoji = mini ? '' : (g.emoji || '');
         var size = p.sizes ? (g.size || '') : '';
         var dir = mini ? (g.dir || '가로형') : '';
-        rows.push([S.buyer.trim(), g.product, n, g.color, emoji, size, dir, 1, optionInfo(g.product, n, g.color, emoji, size, dir)]);
+        var ring = ringOf(g);
+        rows.push([S.buyer.trim(), g.product, n, g.color, emoji, size, dir, 1, optionInfo(g.product, n, g.color, emoji, size, dir, ring), ring]);
       });
     });
     return rows;
@@ -548,11 +564,11 @@ textarea { resize: vertical; min-height: 132px; line-height: 1.6; }
     var aoa = [
       ['리틀프린트 단체주문 입력 양식'],
       ['웹 주문서에서 자동 생성된 파일입니다'],
-      ['구매자명\n(필수)', '상품명\n(필수)', '들어갈 이름\n(필수)', '컬러\n(필수)', '이모티콘\n(미니 제외 필수)', '사이즈\n(지비츠,운동화,마그넷)', '방향\n(미니 제품)', '수량\n(필수)', '옵션정보\n(자동생성)']
+      ['구매자명\n(필수)', '상품명\n(필수)', '들어갈 이름\n(필수)', '컬러\n(필수)', '이모티콘\n(미니 제외 필수)', '사이즈\n(지비츠,운동화,마그넷)', '방향\n(미니 제품)', '수량\n(필수)', '옵션정보\n(자동생성)', '고리\n(마카롱·모노톤·미니)']
     ].concat(buildRows());
     var ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 8 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: 8 } }];
-    ws['!cols'] = [14, 22, 12, 12, 14, 14, 12, 8, 50].map(function (w) { return { wch: w }; });
+    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 9 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: 9 } }];
+    ws['!cols'] = [14, 22, 12, 12, 14, 14, 12, 8, 50, 14].map(function (w) { return { wch: w }; });
     var wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '주문입력');
     return XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
@@ -600,7 +616,7 @@ textarea { resize: vertical; min-height: 132px; line-height: 1.6; }
       case 'new': S.editing = blankDraft(); break;
       case 'edit':
         var g = S.groups.filter(function (x) { return x.id === id; })[0];
-        if (g) S.editing = { id: g.id, product: g.product, pickOpen: false, color: g.color, emoji: g.emoji, size: g.size, dir: g.dir, text: g.names.join('\n') };
+        if (g) S.editing = { id: g.id, product: g.product, pickOpen: false, color: g.color, emoji: g.emoji, size: g.size, dir: g.dir, ring: g.ring || '', text: g.names.join('\n') };
         break;
       case 'cancel': S.editing = S.groups.length ? null : blankDraft(); break;
       case 'set':
@@ -610,13 +626,14 @@ textarea { resize: vertical; min-height: 132px; line-height: 1.6; }
           if (np.colors.indexOf(E.color) < 0) E.color = '';
           if (!np.sizes || np.sizes.indexOf(E.size) < 0) E.size = '';
           if (!np.dirs) E.dir = '';
+          if (!np.rings) E.ring = '';
         }
         if (f === 'product' || f === 'color') { var el = emojiList(prod(E.product), E.color); if (!el || el.indexOf(E.emoji) < 0) E.emoji = ''; }
         break;
       case 'save-group':
         var d = S.editing; if (draftReady(d)) return;
         var p = prod(d.product);
-        var rec = { id: d.id || Date.now(), product: d.product, color: d.color, emoji: emojiList(p, d.color) ? d.emoji : '', size: p.sizes ? d.size : '', dir: p.dirs ? (d.dir || '가로형') : '', names: parseNames(d.text) };
+        var rec = { id: d.id || Date.now(), product: d.product, color: d.color, emoji: emojiList(p, d.color) ? d.emoji : '', size: p.sizes ? d.size : '', dir: p.dirs ? (d.dir || '가로형') : '', ring: p.rings ? (d.ring || RINGS[0]) : '', names: parseNames(d.text) };
         if (d.id) S.groups = S.groups.map(function (x) { return x.id === d.id ? rec : x; }); else S.groups.push(rec);
         S.editing = null; break;
       case 'ask-del': S.confirm = 'del-' + id; break;

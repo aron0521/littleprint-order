@@ -288,14 +288,16 @@ textarea { resize: vertical; min-height: 132px; line-height: 1.6; }
   // ---------- 상태 ----------
   // 주문 접수 주소: Apps Script 웹 앱 URL (…/exec). 비워두면 파일 다운로드 방식으로 동작
   var ENDPOINT = 'https://script.google.com/macros/s/AKfycbwcFFO0zss6z6KtHeDn8ojijNljeQmQ9mzq_JLCknz4E5QFu3fr-ZlcVxF2AhZ_z14LmQ/exec';  // 2026-10-14 Apps Script 웹앱(접수 주소)
-  var KEY = 'lp-group-order-v2';
+  // 2026-10-15: v2 → v3. 고치기 전 버전이 폰에 남겨 둔 '지난 주문'(보낸 뒤에도 안 지워진 것)을 버리려고 저장 이름을 바꿈
+  var KEY = 'lp-group-order-v3';
+  try { localStorage.removeItem('lp-group-order-v2'); } catch (e) {}
   var S = { buyer: '', groups: [], editing: null, confirm: '', saved: null, error: '', expanded: {} };
   function blankDraft() {
     var last = S.groups.length ? S.groups[S.groups.length - 1].product : '';
     return { id: null, product: last, pickOpen: !last, color: '', emoji: '', size: '', dir: '', ring: '', text: '' };
   }
   // 2026-10-15: 작성 중 임시저장은 이 폰(브라우저)에만 있음. 2일 지난 것은 버림(같은 기기를 다른 사람이 쓸 때 대비)
-  try { var raw = localStorage.getItem(KEY); if (raw) { var d0 = JSON.parse(raw); if (d0.at && Date.now() - d0.at > 2 * 86400000) { d0 = {}; localStorage.removeItem(KEY); } S.buyer = d0.buyer || ''; S.groups = (d0.groups || []).filter(function (g) { return prod(g.product); }); } } catch (e) {}
+  try { var raw = localStorage.getItem(KEY); if (raw) { var d0 = JSON.parse(raw); if (!d0.at || Date.now() - d0.at > 2 * 86400000) { d0 = {}; localStorage.removeItem(KEY); } S.buyer = d0.buyer || ''; S.groups = (d0.groups || []).filter(function (g) { return prod(g.product); }); } } catch (e) {}
   if (!S.groups.length) S.editing = blankDraft();
   function persist() { try { if (!S.groups.length && !S.buyer) localStorage.removeItem(KEY); else localStorage.setItem(KEY, JSON.stringify({ buyer: S.buyer, groups: S.groups, at: Date.now() })); } catch (e) {} }
   // 2026-10-15: 주문을 보내고 나면 그 내용을 이 폰에서 지움 — 안 지우면 다음 주문 때 지난 주문이 같이 보내졌음(아론 테스트에서 발견)

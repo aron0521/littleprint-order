@@ -294,9 +294,12 @@ textarea { resize: vertical; min-height: 132px; line-height: 1.6; }
     var last = S.groups.length ? S.groups[S.groups.length - 1].product : '';
     return { id: null, product: last, pickOpen: !last, color: '', emoji: '', size: '', dir: '', ring: '', text: '' };
   }
-  try { var raw = localStorage.getItem(KEY); if (raw) { var d0 = JSON.parse(raw); S.buyer = d0.buyer || ''; S.groups = (d0.groups || []).filter(function (g) { return prod(g.product); }); } } catch (e) {}
+  // 2026-10-15: 작성 중 임시저장은 이 폰(브라우저)에만 있음. 2일 지난 것은 버림(같은 기기를 다른 사람이 쓸 때 대비)
+  try { var raw = localStorage.getItem(KEY); if (raw) { var d0 = JSON.parse(raw); if (d0.at && Date.now() - d0.at > 2 * 86400000) { d0 = {}; localStorage.removeItem(KEY); } S.buyer = d0.buyer || ''; S.groups = (d0.groups || []).filter(function (g) { return prod(g.product); }); } } catch (e) {}
   if (!S.groups.length) S.editing = blankDraft();
-  function persist() { try { localStorage.setItem(KEY, JSON.stringify({ buyer: S.buyer, groups: S.groups })); } catch (e) {} }
+  function persist() { try { if (!S.groups.length && !S.buyer) localStorage.removeItem(KEY); else localStorage.setItem(KEY, JSON.stringify({ buyer: S.buyer, groups: S.groups, at: Date.now() })); } catch (e) {} }
+  // 2026-10-15: 주문을 보내고 나면 그 내용을 이 폰에서 지움 — 안 지우면 다음 주문 때 지난 주문이 같이 보내졌음(아론 테스트에서 발견)
+  function clearSent() { S.groups = []; S.buyer = ''; S.editing = null; S.expanded = {}; persist(); }
   function total() { return S.groups.reduce(function (a, g) { return a + g.names.length; }, 0); }
   function products() { var o = []; S.groups.forEach(function (g) { if (o.indexOf(g.product) < 0) o.push(g.product); }); return o; }
   // 2026-10-14 상품별 개수(스토어 상품명 기준) — 완료 화면에서 상품마다 주문 수량을 따로 안내
@@ -521,8 +524,7 @@ textarea { resize: vertical; min-height: 132px; line-height: 1.6; }
         '<span class="lbl">다음 순서</span><ol><li>받은 파일을 톡톡 채팅방에 보내주세요</li>' + payStep(s) + '<li>결제 후 <b>톡톡으로 알려 주세요</b></li></ol>' +
         '<div class="row"><button class="btn" type="button" data-act="download">파일 다시 받기</button></div>';
     }
-    return h + '<div class="row"><button class="btn" type="button" data-act="back">주문서로 돌아가기</button></div>' +
-      '<button class="btn danger" type="button" data-act="' + (S.confirm === 'reset' ? 'reset' : 'ask-reset') + '">' + (S.confirm === 'reset' ? '정말 비울까요? 한 번 더 누르면 비워져요' : '새 주문서 작성') + '</button></div></section>';
+    return h + '<div class="row"><button class="btn primary" type="button" data-act="back">새 주문서 작성</button></div></div></section>';
   }
 
   function submit() {
@@ -535,7 +537,7 @@ textarea { resize: vertical; min-height: 132px; line-height: 1.6; }
       .then(function (j) {
         S.sending = false;
         if (!j || !j.ok) throw new Error((j && j.error) || '');
-        S.saved = { sent: true, orderNo: j.orderNo, count: count, product: prods, per: perProduct() }; S.finishing = false; S.confirm = '';
+        S.saved = { sent: true, orderNo: j.orderNo, count: count, product: prods, per: perProduct() }; S.finishing = false; S.confirm = ''; clearSent();
         render(); window.scrollTo(0, 0);
       })
       .catch(function () {
@@ -582,8 +584,10 @@ textarea { resize: vertical; min-height: 132px; line-height: 1.6; }
     if (typeof XLSX === 'undefined') { S.error = '파일 도구를 불러오지 못했어요. 새로고침 후 다시 시도해 주세요'; renderBar(); return; }
     var buyer = S.buyer.trim().replace(/[\\/:*?"<>|]/g, '') || '주문';
     var filename = S.saved && S.saved.filename || ('리틀프린트_단체주문_' + buyer + '_' + stamp() + '.xlsx');
-    var data = buildXlsx(), count = total();
-    function done() { S.saved = { filename: filename, count: count, product: products().map(plabel).join(', '), per: perProduct() }; S.finishing = false; S.confirm = ''; render(); window.scrollTo(0, 0); }
+    // 파일로 받은 뒤엔 주문 내용을 지우고, '파일 다시 받기'용으로 만든 파일만 화면에 들고 있음
+    var again = !S.groups.length && S.lastFile;
+    var data = again ? S.lastFile.data : buildXlsx(), count = again ? S.saved.count : total();
+    function done() { if (!again) { S.saved = { filename: filename, count: count, product: products().map(plabel).join(', '), per: perProduct() }; S.lastFile = { data: data }; clearSent(); } S.finishing = false; S.confirm = ''; render(); window.scrollTo(0, 0); }
     function fail(m) { S.error = m; render(); }
     var cl = window.claude;
     if (cl && typeof cl.use === 'function') {
@@ -639,11 +643,11 @@ textarea { resize: vertical; min-height: 132px; line-height: 1.6; }
       case 'ask-del': S.confirm = 'del-' + id; break;
       case 'del': S.groups = S.groups.filter(function (x) { return x.id !== id; }); S.confirm = ''; if (!S.groups.length && !S.editing) S.editing = blankDraft(); break;
       case 'toggle': S.expanded[id] = !S.expanded[id]; break;
-      case 'download': if (!S.buyer.trim()) return; download(); return;
+      case 'download': if (!S.buyer.trim() && !S.lastFile) return; download(); return;
       case 'submit': submit(); return;
       case 'finish': S.finishing = true; S.error = ''; window.scrollTo(0, 0); break;
       case 'unfinish': S.finishing = false; break;
-      case 'back': S.saved = null; S.finishing = false; break;
+      case 'back': S.saved = null; S.lastFile = null; S.finishing = false; if (!S.groups.length) S.editing = blankDraft(); break;
       case 'ask-reset': S.confirm = 'reset'; break;
       case 'reset': S.groups = []; S.buyer = ''; S.saved = null; S.finishing = false; S.confirm = ''; S.editing = blankDraft(); break;
     }
